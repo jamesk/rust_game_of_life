@@ -1,9 +1,21 @@
-extern crate piston_window;
+extern crate piston;
+extern crate opengl_graphics;
+extern crate graphics;
+extern crate sdl2_window;
 
-use piston_window::*;
-use piston_window::grid::Grid;
-use piston_window::math::Matrix2d;
+use opengl_graphics::{ GlGraphics, OpenGL };
+use graphics::{ Context, Graphics };
+use graphics::grid::Grid;
+use graphics::line::Line;
+use graphics::math::Matrix2d;
+use graphics::rectangle;
 use std::collections::HashMap;
+use piston::window::{ AdvancedWindow, WindowSettings };
+use sdl2_window::Sdl2Window as Window;
+use piston::input::*;
+use piston::event_loop::*;
+use graphics::clear;
+use graphics::draw_state::DrawState;
 
 #[derive(Copy, Clone, Debug)]
 struct Cell {
@@ -226,11 +238,12 @@ fn main() {
 	
 	let window_width = 500;
 	let window_height = 500;
-    let mut window: PistonWindow =
+	let opengl = OpenGL::V3_2;
+    let mut window: Window =
         WindowSettings::new("Hello World!", [window_width, window_height])
-            .build().unwrap();
-    window.set_max_fps(3);
-    let window = window;
+        	.opengl(opengl).build()
+        	.unwrap_or_else(|e| { panic!("Failed to build PistonWindow: {}", e) });
+    let ref mut gl = GlGraphics::new(opengl);
      
     let max_cell_size_x = window_width as f64 / board.width as f64;
     let max_cell_size_y = window_height as f64 / board.height as f64;
@@ -238,21 +251,35 @@ fn main() {
     let cell_size = f64::min(max_cell_size_x, max_cell_size_y);
 //    let grid_width = (window_width as f64 / cell_size).floor() as u32;
 //    let grid_height = (window_height as f64 / cell_size).floor() as u32;
-    let grid = grid::Grid { rows: board.width, cols: board.height, units: cell_size};
-    let grid_line = line::Line::new([0.0, 0.0, 0.0, 1.0], 1.0);
+    let grid = Grid { rows: board.width, cols: board.height, units: cell_size};
+    let grid_line = Line::new([0.0, 0.0, 0.0, 1.0], 1.0);
     
-    for e in window {
-        e.draw_2d(|c, g| {
-    		board = do_life(&board);
-        		
-            clear([1.0, 1.0, 1.0, 1.0], g);
-
-			draw_state(&board, &grid, cell_size, c.transform, g);
-           
-            grid.draw(&grid_line,
-            		&Default::default(),
-            		c.transform,
-            		g);
-        });
+    let mut events = window.events().max_fps(3);
+    while let Some(e) = events.next(&mut window) {
+    	if let Some(args) = e.render_args() {
+            gl.draw(args.viewport(), |c, g| {
+	    		board = do_life(&board);
+	        		
+	            clear([1.0, 1.0, 1.0, 1.0], g);
+	
+				draw_state(&board, &grid, cell_size, c.transform, g);
+	           
+	            grid.draw(&grid_line,
+	            		&c.draw_state,
+	            		c.transform,
+	            		g);
+	        });
+    	}
     }
+}
+
+#[test]
+fn board_new_sets_alive_cells() {
+	let mut alives = HashMap::new();
+	//Blinker
+	alives.insert((5, 5), true);
+	
+	let board = Board::new(50, 50, &alives);
+	
+	assert!(board.get_cell(5, 5).alive);
 }

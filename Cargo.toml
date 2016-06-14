@@ -11,4 +11,9 @@ license = "MIT"
 name = "rust_game_of_life"
 
 [dependencies]
-piston_window = "0.38.0"
+piston = "0.17.0"
+piston2d-graphics = "0.13.0"
+piston2d-opengl_graphics = "0.23.0"
+
+[dependencies.pistoncore-sdl2_window]
+version = "0.23.0"
