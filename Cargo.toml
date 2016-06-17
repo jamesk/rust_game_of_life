@@ -1,14 +1,9 @@
 [package]
-
 name = "rust_game_of_life"
 version = "0.0.1"
 authors = [ "James K" ]
 readme = "README.md"
 license = "MIT"
-
-[[bin]]
-
-name = "rust_game_of_life"
 
 [dependencies]
 piston = "0.17.0"

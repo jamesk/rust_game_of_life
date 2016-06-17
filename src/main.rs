@@ -20,6 +20,7 @@ use graphics::draw_state::DrawState;
 #[derive(Copy, Clone, Debug)]
 struct Cell {
 	alive: bool,
+	iteration: usize,
 }
 
 struct Board {
