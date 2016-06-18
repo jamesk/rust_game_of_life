@@ -119,9 +119,14 @@ impl BoardSection for LocalBoardSection {
         // update each cell if possible, ordering is important?
         for x in 1..self.board.get_width() - 1 {
             for y in 1..self.board.get_height() - 1 {
-                for next in self.board.next_cell(x, y) {
-                    self.board.set_cell(x, y, next)
-                }
+            	match self.board.next_cell(x, y) {
+            		Some(next) => {
+            			self.board.set_cell(x, y, next)
+            		}
+            		None => {
+            			debug!("Unable to update a cell due to old neighbours. Cell at [{}] x and [{}] y is [{:?}]", x, y, "TBC");
+            		}
+            	}
             }
         }
 
