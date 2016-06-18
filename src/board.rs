@@ -1,24 +1,24 @@
 use std::collections::HashMap;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Cell {
-    pub alive: bool, //TODO: write getter
+    pub alive: bool, // TODO: write getter
     iteration: usize,
     previous_alive: bool,
 }
 
 impl Cell {
-	pub fn new(alive: bool, iteration: usize, previous_alive: bool) -> Cell {
-		Cell {
-			alive: alive,
-			iteration: iteration,
-			previous_alive: previous_alive,
-		}
-	}
-	
-	pub fn get_iteration(&self) -> usize {
-		self.iteration
-	}
+    pub fn new(alive: bool, iteration: usize, previous_alive: bool) -> Cell {
+        Cell {
+            alive: alive,
+            iteration: iteration,
+            previous_alive: previous_alive,
+        }
+    }
+
+    pub fn get_iteration(&self) -> usize {
+        self.iteration
+    }
 }
 
 pub struct Board {
@@ -96,7 +96,7 @@ impl Board {
                                 Some(c) => {
                                     let alive = if c.iteration == iteration {
                                         c.alive
-                                    } else if iteration > 0 && c.iteration == iteration - 1 {
+                                    } else if c.iteration > 0 && c.iteration - 1 == iteration {
                                         c.previous_alive
                                     } else {
                                         return None;
@@ -152,4 +152,130 @@ impl Board {
             })
         })
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+    use super::*;
+
+    fn get_test_board() -> Board {
+        let mut alives = HashMap::new();
+        alives.insert((1, 1), true);
+
+        Board::new(4, 4, &alives)
+    }
+
+    #[test]
+    fn board_new_sets_alive_cells() {
+        let board = get_test_board();
+
+        assert!(board.get_cell(1, 1).alive);
+        assert!(!board.get_cell(0, 0).alive);
+    }
+
+    #[test]
+    fn board_set_cell_updates_cell() {
+        let mut board = get_test_board();
+        let cell = Cell::new(true, 10, false);
+
+        board.set_cell(2, 2, cell);
+
+        let actual = board.get_cell(2, 2);
+        assert_eq!(actual, &cell);
+    }
+
+    #[test]
+    fn board_neighbour_alive_count_correct_0th_iteration_0_alive() {
+        let board = get_test_board();
+
+        assert_eq!(board.neighbour_alive_count(1, 1, 0), Some(0));
+    }
+
+    #[test]
+    fn board_neighbour_alive_count_correct_0th_iteration_1_alive() {
+        let mut board = get_test_board();
+
+        let cell = Cell::new(true, 0, false);
+        board.set_cell(2, 2, cell);
+
+        assert_eq!(board.neighbour_alive_count(1, 1, 0), Some(1));
+    }
+
+    #[test]
+    fn board_neighbour_alive_count_correct_0th_iteration_3_alive() {
+        let mut board = get_test_board();
+
+        let cell = Cell::new(true, 0, false);
+        board.set_cell(2, 2, cell);
+        board.set_cell(1, 2, cell);
+        board.set_cell(2, 1, cell);
+
+        assert_eq!(board.neighbour_alive_count(1, 1, 0), Some(3));
+    }
+
+    #[test]
+    fn board_neighbour_alive_count_correct_0th_iteration_3_alive_all_ahead() {
+        let mut board = get_test_board();
+
+        let cell = Cell::new(false, 1, true);
+        board.set_cell(2, 2, cell);
+        board.set_cell(1, 2, cell);
+        board.set_cell(2, 1, cell);
+
+        assert_eq!(board.neighbour_alive_count(1, 1, 0), Some(3));
+    }
+
+    #[test]
+    fn board_neighbour_alive_count_correct_0th_iteration_1_alive_others_ahead() {
+        let mut board = get_test_board();
+
+        let cell = Cell::new(true, 1, false);
+        board.set_cell(2, 2, cell);
+        board.set_cell(1, 2, cell);
+        let cell = Cell::new(true, 0, false);
+        board.set_cell(2, 1, cell);
+
+        assert_eq!(board.neighbour_alive_count(1, 1, 0), Some(1));
+    }
+
+    #[test]
+    fn board_neighbour_alive_count_correct_0th_iteration_neighbour_behind() {
+        let mut board = get_test_board();
+
+        let cell = Cell::new(true, 0, false);
+        board.set_cell(2, 2, cell);
+
+        assert_eq!(board.neighbour_alive_count(1, 1, 1), None);
+    }
+
+	#[test]
+	fn board_next_cell_waiting() {
+		let mut board = get_test_board();
+		let cell = Cell::new(true, 10, true);
+		board.set_cell(1, 1, cell);
+		
+		assert_eq!(board.next_cell(1, 1), None);
+	}
+
+	#[test]
+	fn board_next_cell_die() {
+		let board = get_test_board();
+		
+		let actual = board.next_cell(1, 1).expect("No next cell found when all cells on iteration 0");
+		
+		assert_eq!(actual.alive, false);
+	}
+
+	#[test]
+	fn board_next_cell_live() {
+		let mut board = get_test_board();
+		let cell = Cell::new(true, 0, false);
+		board.set_cell(0, 0, cell);
+		board.set_cell(0, 1, cell);
+		
+		let actual = board.next_cell(1, 1).expect("No next cell found when all cells on iteration 0");
+		
+		assert_eq!(actual.alive, true);
+	}
 }
