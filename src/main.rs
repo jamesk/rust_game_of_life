@@ -2,6 +2,7 @@ extern crate piston;
 extern crate opengl_graphics;
 extern crate graphics;
 extern crate sdl2_window;
+extern crate rust_game_of_life;
 
 use opengl_graphics::{ GlGraphics, OpenGL };
 use graphics::{ Context, Graphics };
@@ -16,109 +17,28 @@ use piston::input::*;
 use piston::event_loop::*;
 use graphics::clear;
 use graphics::draw_state::DrawState;
+use rust_game_of_life::section::*;
+use rust_game_of_life::board::*;
 
-#[derive(Copy, Clone, Debug)]
-struct Cell {
-	alive: bool,
-	iteration: usize,
-}
 
-struct Board {
-	width: u32,
-	height: u32,
-	cells: Box<[Box<[Cell]>]>
-}
-
-impl Board {
-	pub fn new(width: u32, height: u32, alive_cells: &HashMap<(u32, u32), bool>) -> Board {
-		let mut cells = Vec::new();
-		for x in 0..width {
-			let mut col = Vec::new();
-			
-			for y in 0..height {
-				let false_pointer = &false;
-				let alive = alive_cells.get(&(x, y)).unwrap_or(false_pointer); //TODO: had lifetime issue
-				let c = Cell { alive: *alive };
-				
-				col.push(c);
-			}
-			
-			cells.push(col.into_boxed_slice());
-		}
-		
-		Board {
-			width: width,
-			height: height,
-			cells: cells.into_boxed_slice(),
-		}
-	}
+fn do_life(section: &mut BoardSection) {
+	assert_eq!(
+		section.get_board().get_height(),
+		section.get_board().get_width()
+	);
 	
-	pub fn get_cell(&self, x: u32, y: u32) -> &Cell {
-		&self.cells[x as usize][y as usize]
-	}
+	let iteration = section.get_board().get_cell(0, 0).get_iteration();
+	let cell = Cell::new(false, iteration, false);
+	let cells = vec![&cell; section.get_board().get_height() as usize];
 	
-	pub fn within_bounds(&self, x: u32, y: u32) -> bool {
-		x < self.width && y < self.height
-	}
+	section.update(BoardSectionSide::Top, &cells);
+	section.update(BoardSectionSide::Bottom, &cells);
+	section.update(BoardSectionSide::Left, &cells);
+	section.update(BoardSectionSide::Right, &cells);
 	
-	pub fn get_cell_option(&self, x: u32, y: u32) -> Option<&Cell> {
-		if self.within_bounds(x, y) {
-			Some(self.get_cell(x, y))
-		} else {
-			None
-		}
-	}
+	section.try_iteration();
 	
-	pub fn neighbour_alive_count(&self, x: u32, y: u32) -> u8 {
-		let mut count = 0;
-		
-		for x_offset in 0..3 {
-			for y_offset in 0..3 {
-				if !(x_offset == 1 && y_offset == 1) {
-					for xi in x.checked_sub(1).and_then(|x| x.checked_add(x_offset)) {
-						for yi in y.checked_sub(1).and_then(|y| y.checked_add(y_offset)) {
-							match self.get_cell_option(xi, yi) {
-								Some(c) if c.alive => count += 1,
-								_ => (),
-							}
-						}
-					}
-				}
-			}
-		}
-		
-		count
-	}
-	
-	//    Any live cell with fewer than two live neighbours dies, as if caused by under-population.
-	//    Any live cell with two or three live neighbours lives on to the next generation.
-	//    Any live cell with more than three live neighbours dies, as if by over-population.
-	//    Any dead cell with exactly three live neighbours becomes a live cell, as if by reproduction.
-	pub fn should_be_alive(&self, x: u32, y: u32) -> Option<bool> {
-		self.get_cell_option(x, y).map(|c| {
-			let alive_neighbours = self.neighbour_alive_count(x, y);
-		
-			if c.alive {
-				if alive_neighbours < 2 {
-					false
-				} else if alive_neighbours > 3 {
-					false
-				} else {
-					true
-				}
-			} else {
-				alive_neighbours == 3
-			}
-		})
-	}
-	
-	pub fn next_cell(&self, x: u32, y: u32) -> Option<Cell> {
-		self.should_be_alive(x, y).map(|alive| Cell { alive: alive })
-	}
-}
-
-fn do_life(board: &Board) -> Board {
-	let mut cells = Vec::new();
+	/*let mut cells = Vec::new();
 	for x in 0..board.width {
 		let mut col = Vec::new();
 		
@@ -130,20 +50,15 @@ fn do_life(board: &Board) -> Board {
 		
 		cells.push(col.into_boxed_slice());
 	}
-	
-	Board {
-		width: board.width,
-		height: board.height,
-		cells: cells.into_boxed_slice(),
-	}
+	*/
 }
 
 fn draw_state<G>(board: &Board, grid: &Grid, cell_size: f64, transform: Matrix2d, g: &mut G) where G: Graphics {
 	let colour = [0.0, 1.0, 0.0, 1.0]; // green
 	
 	//TODO: extract cell iterator?
-	for x in 0..board.width {
-		for y in 0..board.height {
+	for x in 0..board.get_width() {
+		for y in 0..board.get_height() {
 			let c = board.get_cell(x, y);
 			
 			if c.alive {
@@ -231,11 +146,8 @@ fn main() {
 	alives.insert((27, 14), true);
 	alives.insert((28, 14), true);
     
-	let mut board = Board::new(50, 50, &alives);
-	
-	let next = board.neighbour_alive_count(6, 4);
-	
-	println!("next cell is {:?}", next);
+	let board = Board::new(50, 50, &alives);
+	let mut section = LocalBoardSection::new(board);
 	
 	let window_width = 500;
 	let window_height = 500;
@@ -246,24 +158,24 @@ fn main() {
         	.unwrap_or_else(|e| { panic!("Failed to build PistonWindow: {}", e) });
     let ref mut gl = GlGraphics::new(opengl);
      
-    let max_cell_size_x = window_width as f64 / board.width as f64;
-    let max_cell_size_y = window_height as f64 / board.height as f64;
+    let max_cell_size_x = window_width as f64 / section.get_board().get_width() as f64;
+    let max_cell_size_y = window_height as f64 / section.get_board().get_height() as f64;
     
     let cell_size = f64::min(max_cell_size_x, max_cell_size_y);
 //    let grid_width = (window_width as f64 / cell_size).floor() as u32;
 //    let grid_height = (window_height as f64 / cell_size).floor() as u32;
-    let grid = Grid { rows: board.width, cols: board.height, units: cell_size};
+    let grid = Grid { rows: section.get_board().get_width(), cols: section.get_board().get_height(), units: cell_size};
     let grid_line = Line::new([0.0, 0.0, 0.0, 1.0], 1.0);
     
     let mut events = window.events().max_fps(3);
     while let Some(e) = events.next(&mut window) {
     	if let Some(args) = e.render_args() {
             gl.draw(args.viewport(), |c, g| {
-	    		board = do_life(&board);
+	    		do_life(&mut section);
 	        		
 	            clear([1.0, 1.0, 1.0, 1.0], g);
 	
-				draw_state(&board, &grid, cell_size, c.transform, g);
+				draw_state(section.get_board(), &grid, cell_size, c.transform, g);
 	           
 	            grid.draw(&grid_line,
 	            		&c.draw_state,
