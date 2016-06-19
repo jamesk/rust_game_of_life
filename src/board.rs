@@ -96,7 +96,8 @@ impl Board {
                                 Some(c) => {
                                     let alive = if c.iteration == iteration {
                                         c.alive
-                                    } else if c.iteration > 0 && c.iteration - 1 == iteration {
+                                    } else if c.iteration > 0 &&
+                                                   c.iteration - 1 == iteration {
                                         c.previous_alive
                                     } else {
                                         return None;
@@ -136,20 +137,18 @@ impl Board {
 
     }
 
-    pub fn next_cell(&self, x: u32, y: u32) -> Option<Cell> {
-        self.get_cell_option(x, y).and_then(|c| {
-            let alive_count_option = self.neighbour_alive_count(x, y, c.iteration);
+    pub fn next_cell(&self, x: u32, y: u32, current: &Cell) -> Option<Cell> {
+        let alive_count_option = self.neighbour_alive_count(x, y, current.iteration);
 
-            let should_be_alive =
-                alive_count_option.map(|alive_count| Board::should_be_alive(c.alive, alive_count));
+        let should_be_alive =
+            alive_count_option.map(|alive_count| Board::should_be_alive(current.alive, alive_count));
 
-            should_be_alive.map(|alive| {
-                Cell {
-                    alive: alive,
-                    iteration: c.iteration + 1,
-                    previous_alive: c.alive,
-                }
-            })
+        should_be_alive.map(|alive| {
+            Cell {
+                alive: alive,
+                iteration: current.iteration + 1,
+                previous_alive: current.alive,
+            }
         })
     }
 }
@@ -249,33 +248,35 @@ mod tests {
         assert_eq!(board.neighbour_alive_count(1, 1, 1), None);
     }
 
-	#[test]
-	fn board_next_cell_waiting() {
-		let mut board = get_test_board();
-		let cell = Cell::new(true, 10, true);
-		board.set_cell(1, 1, cell);
-		
-		assert_eq!(board.next_cell(1, 1), None);
-	}
+    #[test]
+    fn board_next_cell_waiting() {
+        let mut board = get_test_board();
+        let cell = Cell::new(true, 10, true);
+        board.set_cell(1, 1, cell);
 
-	#[test]
-	fn board_next_cell_die() {
-		let board = get_test_board();
-		
-		let actual = board.next_cell(1, 1).expect("No next cell found when all cells on iteration 0");
-		
-		assert_eq!(actual.alive, false);
-	}
+        assert_eq!(board.next_cell(1, 1, board.get_cell(1, 1)), None);
+    }
 
-	#[test]
-	fn board_next_cell_live() {
-		let mut board = get_test_board();
-		let cell = Cell::new(true, 0, false);
-		board.set_cell(0, 0, cell);
-		board.set_cell(0, 1, cell);
-		
-		let actual = board.next_cell(1, 1).expect("No next cell found when all cells on iteration 0");
-		
-		assert_eq!(actual.alive, true);
-	}
+    #[test]
+    fn board_next_cell_die() {
+        let board = get_test_board();
+
+        let actual = board.next_cell(1, 1, board.get_cell(1, 1))
+            .expect("No next cell found when all cells on iteration 0");
+
+        assert_eq!(actual.alive, false);
+    }
+
+    #[test]
+    fn board_next_cell_live() {
+        let mut board = get_test_board();
+        let cell = Cell::new(true, 0, false);
+        board.set_cell(0, 0, cell);
+        board.set_cell(0, 1, cell);
+
+        let actual = board.next_cell(1, 1, board.get_cell(1, 1))
+            .expect("No next cell found when all cells on iteration 0");
+
+        assert_eq!(actual.alive, true);
+    }
 }

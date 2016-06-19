@@ -5,10 +5,24 @@ use std::hash::{Hash, Hasher};
 use board::Cell;
 use board::Board;
 
-#[derive(Eq)]
 pub struct CellStateCallback {
-    id: usize,
-    callback: fn(&[&Cell]),
+	id: usize,
+    callback: Box<Fn(&[&Cell])>,
+}
+
+impl CellStateCallback {
+	pub fn new(id: usize, callback: Box<Fn(&[&Cell])>) -> CellStateCallback {
+		CellStateCallback {
+			id: id,
+			callback: callback
+		}
+	}
+	
+	pub fn run(&self, cells: &[&Cell]) {
+		let c = &self.callback;
+		
+		c(cells);
+	}
 }
 
 impl Hash for CellStateCallback {
@@ -27,6 +41,8 @@ impl PartialEq for CellStateCallback {
     }
 }
 
+impl Eq for CellStateCallback {}
+
 #[derive(PartialEq, Eq, Hash)]
 pub enum BoardSectionSide {
     Top,
@@ -40,7 +56,7 @@ pub trait BoardSection {
     fn unsubscribe(&mut self, side: BoardSectionSide, callback: CellStateCallback);
 
     fn update(&mut self, side: BoardSectionSide, cells: &[&Cell]);
-    fn try_iteration(&mut self);
+    fn try_iteration(&mut self, upto_iteration: usize);
     fn get_board(&self) -> &Board;
 }
 
@@ -60,10 +76,10 @@ impl LocalBoardSection {
 }
 
 impl BoardSection for LocalBoardSection {
-	fn get_board(&self) -> &Board {
-		&self.board
-	}
-	
+    fn get_board(&self) -> &Board {
+        &self.board
+    }
+
     fn subscribe(&mut self, side: BoardSectionSide, callback: CellStateCallback) {
         let callbacks = self.subscribes.entry(side).or_insert_with(|| HashSet::new());
         callbacks.insert(callback);
@@ -115,18 +131,30 @@ impl BoardSection for LocalBoardSection {
         }
     }
 
-    fn try_iteration(&mut self) {
+    fn try_iteration(&mut self, upto_iteration: usize) {
         // update each cell if possible, ordering is important?
         for x in 1..self.board.get_width() - 1 {
             for y in 1..self.board.get_height() - 1 {
-            	match self.board.next_cell(x, y) {
-            		Some(next) => {
-            			self.board.set_cell(x, y, next)
-            		}
-            		None => {
-            			debug!("Unable to update a cell due to old neighbours. Cell at [{}] x and [{}] y is [{:?}]", x, y, "TBC");
-            		}
-            	}
+                let &current = self.board.get_cell(x, y);
+
+                if current.get_iteration() < upto_iteration {
+                    match self.board.next_cell(x, y, &current) {
+                        Some(next) => self.board.set_cell(x, y, next),
+                        None => {
+                            debug!("Unable to update a cell due to old neighbours. Cell at [{}] \
+                                    x and [{}] y is [{:?}]",
+                                   x,
+                                   y,
+                                   current);
+                        }
+                    }
+                } else {
+                    trace!("Not updating cell due to upto iteration limit. Cell at [{}] x and \
+                            [{}] y is [{:?}]",
+                           x,
+                           y,
+                           current);
+                }
             }
         }
 
@@ -139,8 +167,7 @@ impl BoardSection for LocalBoardSection {
             let cells = &cells;
 
             for callback in callbacks {
-                let c = callback.callback;
-                c(cells);
+                callback.run(cells);
             }
         }
         for callbacks in self.subscribes.get(&BoardSectionSide::Bottom) {
@@ -151,8 +178,7 @@ impl BoardSection for LocalBoardSection {
             let cells = &cells;
 
             for callback in callbacks {
-                let c = callback.callback;
-                c(cells);
+                callback.run(cells);
             }
         }
         for callbacks in self.subscribes.get(&BoardSectionSide::Left) {
@@ -163,8 +189,7 @@ impl BoardSection for LocalBoardSection {
             let cells = &cells;
 
             for callback in callbacks {
-                let c = callback.callback;
-                c(cells);
+                callback.run(cells);
             }
         }
         for callbacks in self.subscribes.get(&BoardSectionSide::Right) {
@@ -175,8 +200,7 @@ impl BoardSection for LocalBoardSection {
             let cells = &cells;
 
             for callback in callbacks {
-                let c = callback.callback;
-                c(cells);
+                callback.run(cells);
             }
         }
     }
