@@ -173,7 +173,7 @@ impl BoardSection for LocalBoardSection {
         for callbacks in self.subscribes.get(&BoardSectionSide::Bottom) {
             let mut cells = Vec::with_capacity(self.board.get_width() as usize);
             for x in 0..self.board.get_width() {
-                cells.push(self.board.get_cell(x, self.board.get_height() - 1))
+                cells.push(self.board.get_cell(x, self.board.get_height() - 2))
             }
             let cells = &cells;
 
@@ -195,7 +195,7 @@ impl BoardSection for LocalBoardSection {
         for callbacks in self.subscribes.get(&BoardSectionSide::Right) {
             let mut cells = Vec::with_capacity(self.board.get_height() as usize);
             for y in 0..self.board.get_height() {
-                cells.push(self.board.get_cell(self.board.get_width() - 1, y))
+                cells.push(self.board.get_cell(self.board.get_width() - 2, y))
             }
             let cells = &cells;
 
