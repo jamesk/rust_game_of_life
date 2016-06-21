@@ -6,12 +6,12 @@ use board::Cell;
 use board::Board;
 
 pub struct CellStateCallback {
-	id: usize,
+	id: (usize, usize),
     callback: Box<Fn(&[&Cell])>,
 }
 
 impl CellStateCallback {
-	pub fn new(id: usize, callback: Box<Fn(&[&Cell])>) -> CellStateCallback {
+	pub fn new(id: (usize, usize), callback: Box<Fn(&[&Cell])>) -> CellStateCallback {
 		CellStateCallback {
 			id: id,
 			callback: callback
@@ -43,7 +43,7 @@ impl PartialEq for CellStateCallback {
 
 impl Eq for CellStateCallback {}
 
-#[derive(PartialEq, Eq, Hash)]
+#[derive(PartialEq, Eq, Hash, Copy, Clone)]
 pub enum BoardSectionSide {
     Top,
     Bottom,
