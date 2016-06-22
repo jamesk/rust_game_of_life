@@ -180,7 +180,20 @@ fn draw_cell<G>(cell: Cell,
 
     let cell_rectangle = [grid.x_pos((x, y)), grid.y_pos((x, y)), cell_size, cell_size];
 
-    if cell.alive {
+    let alive = if iteration >= cell.get_iteration() {
+        cell.alive
+    } else if iteration + 1 == cell.get_iteration() {
+        cell.get_previous_alive()
+    } else {
+        panic!("Asked to draw iteration [{}] but cell's iteration is [{}], cell too far ahead to \
+                draw. Cell's co-ords are [{}, {}]",
+               iteration,
+               cell.get_iteration(),
+               x,
+               y);
+    };
+
+    if alive {
         rectangle(colour, cell_rectangle, transform, g);
     }
 
@@ -194,10 +207,13 @@ fn draw_cell<G>(cell: Cell,
         const AGE_MAX_DARK: f32 = 0.75;
         const AGE_DARK_INCREMENT: f32 = AGE_MAX_DARK / ((AGE_LEVELS - 1) as f32);
 
-        let age = cmp::min(AGE_LEVELS - 1, iteration - cell.get_iteration());
-        let age_dark = AGE_DARK_INCREMENT * (age as f32);
-        trace!("Age of cell is [{}], setting darkness to [{}]. Note, dark increment is [{}]",
-               age,
+        let cell_age = iteration.checked_sub(cell.get_iteration()).unwrap_or(0);
+        let display_age = cmp::min(AGE_LEVELS - 1, cell_age);
+        let age_dark = AGE_DARK_INCREMENT * (display_age as f32);
+        trace!("Age of cell is [{}], display age is [{}], setting darkness to [{}]. Note, dark \
+                increment is [{}]",
+               cell_age,
+               display_age,
                age_dark,
                AGE_DARK_INCREMENT);
         let age_colour = [0.0, 0.0, 0.0, age_dark];
@@ -215,28 +231,62 @@ fn main() {
     let section_height = 10;
 
     let mut columns: Vec<Vec<Box<BoardSection>>> = Vec::new();
-    let mut col: Vec<Box<BoardSection>> = Vec::new();
 
-    let mut alives = HashMap::new();
-    // Glider
-    alives.insert((1, 7), true);
-    alives.insert((2, 7), true);
-    alives.insert((3, 7), true);
-    alives.insert((3, 6), true);
-    alives.insert((2, 5), true);
+    {
+        let mut col: Vec<Box<BoardSection>> = Vec::new();
 
-    let board = Board::new(section_width, section_height, &alives);
-    col.push(Box::new(LocalBoardSection::new(board)));
+        let mut alives = HashMap::new();
+        // Glider
+        alives.insert((3, 5), true);
+        alives.insert((4, 5), true);
+        alives.insert((5, 5), true);
+        alives.insert((5, 4), true);
+        alives.insert((4, 3), true);
 
-    let mut alives = HashMap::new();
-    alives.insert((7, 7), true);
-    alives.insert((7, 8), true);
-    alives.insert((8, 7), true);
-    alives.insert((8, 8), true);
-    let board = Board::new(section_width, section_height, &alives);
-    col.push(Box::new(LocalBoardSection::new(board)));
+        let board = Board::new(section_width, section_height, &alives);
+        col.push(Box::new(LocalBoardSection::new(board)));
 
-    columns.push(col);
+        let alives = HashMap::new();
+
+        let board = Board::new(section_width, section_height, &alives);
+        col.push(Box::new(LocalBoardSection::new(board)));
+
+        let board = Board::new(section_width, section_height, &alives);
+        col.push(Box::new(LocalBoardSection::new(board)));
+
+        columns.push(col);
+    }
+    {
+        let mut col: Vec<Box<BoardSection>> = Vec::new();
+        let alives = HashMap::new();
+
+        let board = Board::new(section_width, section_height, &alives);
+        col.push(Box::new(LocalBoardSection::new(board)));
+
+        let board = Board::new(section_width, section_height, &alives);
+        col.push(Box::new(LocalBoardSection::new(board)));
+
+        let board = Board::new(section_width, section_height, &alives);
+        col.push(Box::new(LocalBoardSection::new(board)));
+
+        columns.push(col);
+    }
+
+    {
+        let mut col: Vec<Box<BoardSection>> = Vec::new();
+        let alives = HashMap::new();
+
+        let board = Board::new(section_width, section_height, &alives);
+        col.push(Box::new(LocalBoardSection::new(board)));
+
+        let board = Board::new(section_width, section_height, &alives);
+        col.push(Box::new(LocalBoardSection::new(board)));
+
+        let board = Board::new(section_width, section_height, &alives);
+        col.push(Box::new(LocalBoardSection::new(board)));
+
+        columns.push(col);
+    }
 
     let whole = Whole::new(columns);
     // let bottom_callback: Box<Fn(&[&Cell])> = {
@@ -288,7 +338,7 @@ fn main() {
     };
     let grid_line = Line::new([0.0, 0.0, 0.0, 1.0], 1.0);
 
-    let mut events = window.events().max_fps(2);
+    let mut events = window.events().max_fps(6);
     let mut iteration = 0;
     let mut tick = 0;
 
@@ -297,18 +347,26 @@ fn main() {
     while let Some(e) = events.next(&mut window) {
         if let Some(args) = e.render_args() {
             gl.draw(args.viewport(), |c, g| {
-        		debug!("Doing iteration [{}], tick is [{}]", iteration, tick);
-            		
+                debug!("Doing iteration [{}], tick is [{}]", iteration, tick);
+
                 do_life(whole, iteration);
 
                 clear([1.0, 1.0, 1.0, 1.0], g);
 
-            	whole.foreach_cell(&mut |cell, x, y| {
-					draw_cell(cell, x, y, iteration, &grid, cell_size, c.transform, g);
+                let iteration_to_draw = iteration.checked_sub(1).unwrap_or(0);
+                whole.foreach_cell(&mut |cell, x, y| {
+                    draw_cell(cell,
+                              x,
+                              y,
+                              iteration_to_draw,
+                              &grid,
+                              cell_size,
+                              c.transform,
+                              g);
                 });
 
-				//Draw grid over the top of squares
-				grid.draw(&grid_line, &c.draw_state, c.transform, g);
+                // Draw grid over the top of squares
+                grid.draw(&grid_line, &c.draw_state, c.transform, g);
 
                 tick += 1;
                 iteration += if tick % 3 == 0 {

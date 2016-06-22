@@ -19,6 +19,10 @@ impl Cell {
     pub fn get_iteration(&self) -> usize {
         self.iteration
     }
+
+    pub fn get_previous_alive(&self) -> bool {
+        self.previous_alive
+    }
 }
 
 pub struct Board {
@@ -141,7 +145,9 @@ impl Board {
         let alive_count_option = self.neighbour_alive_count(x, y, current.iteration);
 
         let should_be_alive =
-            alive_count_option.map(|alive_count| Board::should_be_alive(current.alive, alive_count));
+            alive_count_option.map(|alive_count|
+            	Board::should_be_alive(current.alive, alive_count)
+            );
 
         should_be_alive.map(|alive| {
             Cell {
