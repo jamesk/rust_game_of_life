@@ -37,47 +37,53 @@ impl Whole {
     fn connect_sections(sections: &Vec<Vec<Arc<Mutex<Box<BoardSection>>>>>) {
         for (x, column) in sections.iter().enumerate() {
             for (y, section) in column.iter().enumerate() {
+            	let mut s = section.lock().unwrap();
+            	
                 for ox in x.checked_sub(1) {
                     for other_section in sections.get(ox).and_then(|c| c.get(y)) {
-                        let side = BoardSectionSide::Left;
+                        let my_side = BoardSectionSide::Left;
+                        let other_side = BoardSectionSide::Right;
                         let callback = CellStateCallback::new((ox, y),
-                                                              Whole::get_callback(side,
+                                                              Whole::get_callback(other_side,
                                                                                   other_section));
 
-                        section.lock().unwrap().subscribe(side, callback);
+                        s.subscribe(my_side, callback);
                     }
                 }
 
                 for ox in x.checked_add(1) {
                     for other_section in sections.get(ox).and_then(|c| c.get(y)) {
-                        let side = BoardSectionSide::Right;
+                        let my_side = BoardSectionSide::Right;
+                        let other_side = BoardSectionSide::Right;
                         let callback = CellStateCallback::new((ox, y),
-                                                              Whole::get_callback(side,
+                                                              Whole::get_callback(other_side,
                                                                                   other_section));
 
-                        section.lock().unwrap().subscribe(side, callback);
+                        s.subscribe(my_side, callback);
                     }
                 }
 
                 for oy in y.checked_sub(1) {
                     for other_section in sections.get(x).and_then(|c| c.get(oy)) {
-                        let side = BoardSectionSide::Top;
+                        let my_side = BoardSectionSide::Top;
+                        let other_side = BoardSectionSide::Bottom;
                         let callback = CellStateCallback::new((x, oy),
-                                                              Whole::get_callback(side,
+                                                              Whole::get_callback(other_side,
                                                                                   other_section));
 
-                        section.lock().unwrap().subscribe(side, callback);
+                        s.subscribe(my_side, callback);
                     }
                 }
 
                 for oy in y.checked_add(1) {
                     for other_section in sections.get(x).and_then(|c| c.get(oy)) {
-                        let side = BoardSectionSide::Bottom;
+                        let my_side = BoardSectionSide::Bottom;
+                        let other_side = BoardSectionSide::Top;
                         let callback = CellStateCallback::new((x, oy),
-                                                              Whole::get_callback(side,
+                                                              Whole::get_callback(other_side,
                                                                                   other_section));
 
-                        section.lock().unwrap().subscribe(side, callback);
+                        s.subscribe(my_side, callback);
                     }
                 }
             }
