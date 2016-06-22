@@ -137,7 +137,7 @@ impl Whole {
         }
     }
     
-    pub fn foreach_cell(&self, callback: &Fn(Cell, u32, u32)) {
+    pub fn foreach_cell(&self, callback: &mut FnMut(Cell, u32, u32)) {
     	for (sx, col) in self.sections.iter().enumerate() {
     		for (sy, sec) in col.iter().enumerate() {
     			let s = sec.lock().unwrap();

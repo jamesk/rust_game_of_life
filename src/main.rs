@@ -298,35 +298,19 @@ fn main() {
 
     while let Some(e) = events.next(&mut window) {
         if let Some(args) = e.render_args() {
-            gl.draw(args.viewport(), move |c, g| {
+            gl.draw(args.viewport(), |c, g| {
+        		debug!("Doing iteration [{}], tick is [{}]", iteration, tick);
+            		
                 do_life(whole, iteration);
 
                 clear([1.0, 1.0, 1.0, 1.0], g);
 
-                whole.foreach_cell(&mut |cell, x, y| {
+            	whole.foreach_cell(&mut |cell, x, y| {
 					draw_cell(cell, x, y, iteration, &grid, cell_size, c.transform, g);
                 });
-                // draw_state(sectionTop.lock().unwrap().get_board(),
-                // ViewBox::new(0, 0, 10, 9),
-                // iteration,
-                // &grid,
-                // 0,
-                // 0,
-                // cell_size,
-                // c.transform,
-                // g);
-                //
-                // draw_state(sectionBottom.lock().unwrap().get_board(),
-                // ViewBox::new(0, 1, 10, 9),
-                // iteration,
-                // &grid,
-                // 0,
-                // sectionTop.lock().unwrap().get_board().get_height() - 2,
-                // cell_size,
-                // c.transform,
-                // g);
-                //
-                grid.draw(&grid_line, &c.draw_state, c.transform, g);
+
+				//Draw grid over the top of squares
+				grid.draw(&grid_line, &c.draw_state, c.transform, g);
 
                 tick += 1;
                 iteration += if tick % 3 == 0 {
