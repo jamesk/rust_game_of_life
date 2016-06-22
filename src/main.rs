@@ -215,28 +215,62 @@ fn main() {
     let section_height = 10;
 
     let mut columns: Vec<Vec<Box<BoardSection>>> = Vec::new();
-    let mut col: Vec<Box<BoardSection>> = Vec::new();
 
-    let mut alives = HashMap::new();
-    // Glider
-    alives.insert((1, 7), true);
-    alives.insert((2, 7), true);
-    alives.insert((3, 7), true);
-    alives.insert((3, 6), true);
-    alives.insert((2, 5), true);
+    {
+        let mut col: Vec<Box<BoardSection>> = Vec::new();
 
-    let board = Board::new(section_width, section_height, &alives);
-    col.push(Box::new(LocalBoardSection::new(board)));
+        let mut alives = HashMap::new();
+        // Glider
+        alives.insert((3, 5), true);
+        alives.insert((4, 5), true);
+        alives.insert((5, 5), true);
+        alives.insert((5, 4), true);
+        alives.insert((4, 3), true);
 
-    let mut alives = HashMap::new();
-    alives.insert((7, 7), true);
-    alives.insert((7, 8), true);
-    alives.insert((8, 7), true);
-    alives.insert((8, 8), true);
-    let board = Board::new(section_width, section_height, &alives);
-    col.push(Box::new(LocalBoardSection::new(board)));
+        let board = Board::new(section_width, section_height, &alives);
+        col.push(Box::new(LocalBoardSection::new(board)));
 
-    columns.push(col);
+        let alives = HashMap::new();
+
+        let board = Board::new(section_width, section_height, &alives);
+        col.push(Box::new(LocalBoardSection::new(board)));
+
+        let board = Board::new(section_width, section_height, &alives);
+        col.push(Box::new(LocalBoardSection::new(board)));
+
+        columns.push(col);
+    }
+    {
+        let mut col: Vec<Box<BoardSection>> = Vec::new();
+        let alives = HashMap::new();
+
+        let board = Board::new(section_width, section_height, &alives);
+        col.push(Box::new(LocalBoardSection::new(board)));
+
+        let board = Board::new(section_width, section_height, &alives);
+        col.push(Box::new(LocalBoardSection::new(board)));
+
+        let board = Board::new(section_width, section_height, &alives);
+        col.push(Box::new(LocalBoardSection::new(board)));
+
+        columns.push(col);
+    }
+
+    {
+        let mut col: Vec<Box<BoardSection>> = Vec::new();
+        let alives = HashMap::new();
+
+        let board = Board::new(section_width, section_height, &alives);
+        col.push(Box::new(LocalBoardSection::new(board)));
+
+        let board = Board::new(section_width, section_height, &alives);
+        col.push(Box::new(LocalBoardSection::new(board)));
+
+        let board = Board::new(section_width, section_height, &alives);
+        col.push(Box::new(LocalBoardSection::new(board)));
+
+        columns.push(col);
+    }
 
     let whole = Whole::new(columns);
     // let bottom_callback: Box<Fn(&[&Cell])> = {
@@ -288,7 +322,7 @@ fn main() {
     };
     let grid_line = Line::new([0.0, 0.0, 0.0, 1.0], 1.0);
 
-    let mut events = window.events().max_fps(2);
+    let mut events = window.events().max_fps(6);
     let mut iteration = 0;
     let mut tick = 0;
 
@@ -297,18 +331,18 @@ fn main() {
     while let Some(e) = events.next(&mut window) {
         if let Some(args) = e.render_args() {
             gl.draw(args.viewport(), |c, g| {
-        		debug!("Doing iteration [{}], tick is [{}]", iteration, tick);
-            		
+                debug!("Doing iteration [{}], tick is [{}]", iteration, tick);
+
                 do_life(whole, iteration);
 
                 clear([1.0, 1.0, 1.0, 1.0], g);
 
-            	whole.foreach_cell(&mut |cell, x, y| {
-					draw_cell(cell, x, y, iteration, &grid, cell_size, c.transform, g);
+                whole.foreach_cell(&mut |cell, x, y| {
+                    draw_cell(cell, x, y, iteration, &grid, cell_size, c.transform, g);
                 });
 
-				//Draw grid over the top of squares
-				grid.draw(&grid_line, &c.draw_state, c.transform, g);
+                // Draw grid over the top of squares
+                grid.draw(&grid_line, &c.draw_state, c.transform, g);
 
                 tick += 1;
                 iteration += if tick % 3 == 0 {

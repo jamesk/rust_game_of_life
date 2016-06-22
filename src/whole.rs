@@ -54,7 +54,7 @@ impl Whole {
                 for ox in x.checked_add(1) {
                     for other_section in sections.get(ox).and_then(|c| c.get(y)) {
                         let my_side = BoardSectionSide::Right;
-                        let other_side = BoardSectionSide::Right;
+                        let other_side = BoardSectionSide::Left;
                         let callback = CellStateCallback::new((ox, y),
                                                               Whole::get_callback(other_side,
                                                                                   other_section));
