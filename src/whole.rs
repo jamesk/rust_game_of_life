@@ -106,7 +106,7 @@ impl Whole {
                     let raw_width = s.lock().unwrap().get_board().get_width() as usize;
 
                     // Take off 2 for the joining columns
-                    cmp::max(0, raw_width - 1)
+                    cmp::max(0, raw_width - 2)
                 })
             })
             .unwrap_or(0);
@@ -115,7 +115,7 @@ impl Whole {
 
         // Add 2 for the far left/right columns
         if raw_width > 0 {
-            raw_width + 1
+            raw_width + 2
         } else {
             0
         }
@@ -128,8 +128,8 @@ impl Whole {
                 c.get(0).map(|s| {
                     let raw_height = s.lock().unwrap().get_board().get_height() as usize;
 
-                    // Take off 2 for the joining columns
-                    cmp::max(0, raw_height - 1)
+                    // Take off 2 for the joining rows
+                    cmp::max(0, raw_height - 2)
                 })
             })
             .unwrap_or(0);
@@ -137,7 +137,7 @@ impl Whole {
         let raw_height = self.sections.get(0).map(|c| c.len()).unwrap_or(0) * section_height;
         // Add 2 for the top and bottom rows
         if raw_height > 0 {
-            raw_height + 1
+            raw_height + 2
         } else {
             0
         }
@@ -149,11 +149,11 @@ impl Whole {
     			let s = sec.lock().unwrap();
     			let b = s.get_board();
     			
-    			let offset_x = ((sx as u32) * (b.get_width() - 1)) + 1;
-    			let offset_y = ((sy as u32) * (b.get_height() - 1)) + 1;
+    			let offset_x = (sx as u32) * (b.get_width() - 2);
+    			let offset_y = (sy as u32) * (b.get_height() - 2);
     			
-    			let (start_x, offset_x) = if sx == 0 { (0, offset_x-1) } else { (1, offset_x) };
-    			let (start_y, offset_y) = if sy == 0 { (0, offset_y-1) } else { (1, offset_y) };
+    			let start_x = if sx == 0 { 0 } else { 2 };
+    			let start_y = if sy == 0 { 0 } else { 2 };
 
     			for x in start_x..b.get_width() {
     				for y in start_y..b.get_height() {

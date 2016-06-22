@@ -227,18 +227,16 @@ fn main() {
 
     let board = Board::new(section_width, section_height, &alives);
     col.push(Box::new(LocalBoardSection::new(board)));
-    // let mut sectionTop = Arc::new(Mutex::new(LocalBoardSection::new(board)));
 
     let mut alives = HashMap::new();
+    alives.insert((7, 7), true);
+    alives.insert((7, 8), true);
+    alives.insert((8, 7), true);
     alives.insert((8, 8), true);
-    alives.insert((8, 9), true);
-    alives.insert((9, 8), true);
-    alives.insert((9, 9), true);
     let board = Board::new(section_width, section_height, &alives);
     col.push(Box::new(LocalBoardSection::new(board)));
 
     columns.push(col);
-    // let mut sectionBottom = Arc::new(Mutex::new(LocalBoardSection::new(board)));
 
     let whole = Whole::new(columns);
     // let bottom_callback: Box<Fn(&[&Cell])> = {
