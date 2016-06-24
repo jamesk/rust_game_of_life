@@ -2,6 +2,8 @@ use section::*;
 use board::Cell;
 use std::sync::{Arc, Mutex};
 use std::cmp;
+use std::sync::mpsc::SyncSender;
+use std::sync::mpsc;
 
 pub struct Whole {
     sections: Vec<Vec<Arc<Mutex<Box<BoardSection>>>>>,
@@ -24,28 +26,28 @@ impl Whole {
         Whole { sections: safe_sections }
     }
 
-    fn get_callback(side: BoardSectionSide,
-                    section: &Arc<Mutex<Box<BoardSection>>>)
-                    -> Box<Fn(&[&Cell])> {
-        let s = section.clone();
+    pub fn create_sender(side: BoardSectionSide,
+                  section: &Arc<Mutex<Box<BoardSection>>>)
+                  -> SyncSender<Arc<Vec<Cell>>> {
+        let (tx, rx) = mpsc::sync_channel(1);
 
-        Box::new(move |cells: &[&Cell]| {
-            s.lock().unwrap().update(side, cells);
-        })
+        section.lock().unwrap().add_receiver(side, rx);
+
+        tx
     }
 
     fn connect_sections(sections: &Vec<Vec<Arc<Mutex<Box<BoardSection>>>>>) {
         for (x, column) in sections.iter().enumerate() {
             for (y, section) in column.iter().enumerate() {
-            	let mut s = section.lock().unwrap();
-            	
+                let mut s = section.lock().unwrap();
+
                 for ox in x.checked_sub(1) {
                     for other_section in sections.get(ox).and_then(|c| c.get(y)) {
                         let my_side = BoardSectionSide::Left;
                         let other_side = BoardSectionSide::Right;
                         let callback = CellStateCallback::new((ox, y),
-                                                              Whole::get_callback(other_side,
-                                                                                  other_section));
+                                                              Whole::create_sender(other_side,
+                                                                                other_section));
 
                         s.subscribe(my_side, callback);
                     }
@@ -56,8 +58,8 @@ impl Whole {
                         let my_side = BoardSectionSide::Right;
                         let other_side = BoardSectionSide::Left;
                         let callback = CellStateCallback::new((ox, y),
-                                                              Whole::get_callback(other_side,
-                                                                                  other_section));
+                                                              Whole::create_sender(other_side,
+                                                                                other_section));
 
                         s.subscribe(my_side, callback);
                     }
@@ -68,8 +70,8 @@ impl Whole {
                         let my_side = BoardSectionSide::Top;
                         let other_side = BoardSectionSide::Bottom;
                         let callback = CellStateCallback::new((x, oy),
-                                                              Whole::get_callback(other_side,
-                                                                                  other_section));
+                                                              Whole::create_sender(other_side,
+                                                                                other_section));
 
                         s.subscribe(my_side, callback);
                     }
@@ -80,8 +82,8 @@ impl Whole {
                         let my_side = BoardSectionSide::Bottom;
                         let other_side = BoardSectionSide::Top;
                         let callback = CellStateCallback::new((x, oy),
-                                                              Whole::get_callback(other_side,
-                                                                                  other_section));
+                                                              Whole::create_sender(other_side,
+                                                                                other_section));
 
                         s.subscribe(my_side, callback);
                     }
@@ -90,13 +92,13 @@ impl Whole {
         }
     }
 
-	pub fn sections_width(&self) -> usize {
-		self.sections.len()
-	}
-	
-	pub fn sections_height(&self) -> usize {
-		self.sections.get(0).map(|c| c.len()).unwrap_or(0)
-	}
+    pub fn sections_width(&self) -> usize {
+        self.sections.len()
+    }
+
+    pub fn sections_height(&self) -> usize {
+        self.sections.get(0).map(|c| c.len()).unwrap_or(0)
+    }
 
     pub fn columns_count(&self) -> usize {
         let section_width = self.sections
@@ -142,31 +144,39 @@ impl Whole {
             0
         }
     }
-    
-    pub fn foreach_cell(&self, callback: &mut FnMut(Cell, u32, u32)) {
-    	for (sx, col) in self.sections.iter().enumerate() {
-    		for (sy, sec) in col.iter().enumerate() {
-    			let s = sec.lock().unwrap();
-    			let b = s.get_board();
-    			
-    			let offset_x = (sx as u32) * (b.get_width() - 2);
-    			let offset_y = (sy as u32) * (b.get_height() - 2);
-    			
-    			let start_x = if sx == 0 { 0 } else { 2 };
-    			let start_y = if sy == 0 { 0 } else { 2 };
 
-    			for x in start_x..b.get_width() {
-    				for y in start_y..b.get_height() {
-    					let &cell = b.get_cell(x, y);
-    					
-    					callback(cell, offset_x + x, offset_y + y);
-    				}
-    			}
-    		}
-    	}
+    pub fn foreach_cell(&self, callback: &mut FnMut(Cell, u32, u32)) {
+        for (sx, col) in self.sections.iter().enumerate() {
+            for (sy, sec) in col.iter().enumerate() {
+                let s = sec.lock().unwrap();
+                let b = s.get_board();
+
+                let offset_x = (sx as u32) * (b.get_width() - 2);
+                let offset_y = (sy as u32) * (b.get_height() - 2);
+
+                let start_x = if sx == 0 {
+                    0
+                } else {
+                    2
+                };
+                let start_y = if sy == 0 {
+                    0
+                } else {
+                    2
+                };
+
+                for x in start_x..b.get_width() {
+                    for y in start_y..b.get_height() {
+                        let &cell = b.get_cell(x, y);
+
+                        callback(cell, offset_x + x, offset_y + y);
+                    }
+                }
+            }
+        }
     }
-    
+
     pub fn get_section(&self, x: usize, y: usize) -> Arc<Mutex<Box<BoardSection>>> {
-    	self.sections[x][y].clone()
+        self.sections[x][y].clone()
     }
 }

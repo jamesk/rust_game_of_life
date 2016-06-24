@@ -24,86 +24,67 @@ use rust_game_of_life::section::*;
 use rust_game_of_life::board::*;
 use rust_game_of_life::whole::*;
 use std::cmp;
+use std::sync::mpsc::SyncSender;
+use std::sync::mpsc::TrySendError;
+use std::sync::Arc;
 
-// Might be handy later, if not delete
-//
-// struct ViewBox {
-// start_x: u32,
-// start_y: u32,
-// width: u32,
-// height: u32,
-// }
-//
-// impl ViewBox {
-// pub fn new(start_x: u32, start_y: u32, width: u32, height: u32) -> ViewBox {
-// ViewBox {
-// start_x: start_x,
-// start_y: start_y,
-// width: width,
-// height: height,
-// }
-// }
-//
-// pub fn get_start_x(&self) -> u32 {
-// self.start_x
-// }
-//
-// pub fn get_end_x(&self) -> u32 {
-// self.start_x + self.width
-// }
-//
-// pub fn get_start_y(&self) -> u32 {
-// self.start_y
-// }
-//
-// pub fn get_end_y(&self) -> u32 {
-// self.start_y + self.height
-// }
-// }
-//
-
-
-fn do_life(whole: &Whole, iteration: usize) {
+fn do_life(senders: &HashMap<BoardSectionSide, Vec<SyncSender<Arc<Vec<Cell>>>>>,
+           width: u32,
+           height: u32,
+           whole: &Whole,
+           iteration: usize) {
     let cell = Cell::new(false, iteration, false);
 
-    for x in 0..whole.sections_width() {
-        {
-            let section_arc = whole.get_section(x, 0);
-            let mut section = section_arc.lock().unwrap();
-
-            let cells = vec![&cell; section.get_board().get_width() as usize];
-            section.update(BoardSectionSide::Top, &cells);
+    let cells = Arc::new(vec![cell; width as usize]);
+    for top_senders in senders.get(&BoardSectionSide::Top) {
+        for sender in top_senders {
+            match sender.try_send(cells.clone()) {
+                Ok(_) => {}
+                Err(TrySendError::Full(_)) => {}
+                Err(TrySendError::Disconnected(_)) => {
+                    // TODO: unsubscribe? panic?
+                }
+            }
         }
-
-        {
-            // TODO: don't like this pattern, I'm not using section_arc anywhere else
-            //      but it is needed for lifetimes to match up though
-            let section_arc = whole.get_section(x, whole.sections_height() - 1);
-            let mut section = section_arc.lock().unwrap();
-
-            let cells = vec![&cell; section.get_board().get_width() as usize];
-            section.update(BoardSectionSide::Bottom, &cells);
+    }
+    for bottom_senders in senders.get(&BoardSectionSide::Bottom) {
+        for sender in bottom_senders {
+            match sender.try_send(cells.clone()) {
+                Ok(_) => {}
+                Err(TrySendError::Full(_)) => {}
+                Err(TrySendError::Disconnected(_)) => {
+                    // TODO: unsubscribe? panic?
+                }
+            }
         }
     }
 
-    for y in 0..whole.sections_height() {
-        {
-            let section_arc = whole.get_section(0, y);
-            let mut section = section_arc.lock().unwrap();
 
-            let cells = vec![&cell; section.get_board().get_width() as usize];
-            section.update(BoardSectionSide::Left, &cells);
-        }
-
-        {
-            let section_arc = whole.get_section(whole.sections_width() - 1, y);
-            let mut section = section_arc.lock().unwrap();
-
-            let cells = vec![&cell; section.get_board().get_width() as usize];
-            section.update(BoardSectionSide::Right, &cells);
+    let cells = Arc::new(vec![cell; height as usize]);
+    for left_senders in senders.get(&BoardSectionSide::Left) {
+        for sender in left_senders {
+            match sender.try_send(cells.clone()) {
+                Ok(_) => {}
+                Err(TrySendError::Full(_)) => {}
+                Err(TrySendError::Disconnected(_)) => {
+                    // TODO: unsubscribe? panic?
+                }
+            }
         }
     }
-
+    for right_senders in senders.get(&BoardSectionSide::Right) {
+        for sender in right_senders {
+            match sender.try_send(cells.clone()) {
+                Ok(_) => {}
+                Err(TrySendError::Full(_)) => {}
+                Err(TrySendError::Disconnected(_)) => {
+                    // TODO: unsubscribe? panic?
+                }
+            }
+        }
+    }
+    
+    //TODO: move this into a thread pool type thing
     for x in 0..whole.sections_width() {
         for y in 0..whole.sections_height() {
             let section_arc = whole.get_section(x, y);
@@ -112,59 +93,6 @@ fn do_life(whole: &Whole, iteration: usize) {
         }
     }
 }
-
-// fn draw_state<G>(board: &Board,
-// view: ViewBox,
-// iteration: usize,
-// grid: &Grid,
-// x_offset: u32,
-// y_offset: u32,
-// cell_size: f64,
-// transform: Matrix2d,
-// g: &mut G)
-// where G: Graphics
-// {
-// let colour = [0.0, 1.0, 0.0, 1.0]; // green
-//
-// TODO: extract cell iterator?
-// for x in view.get_start_x()..view.get_end_x() {
-// for y in view.get_start_y()..view.get_end_y() {
-// let c = board.get_cell(x, y);
-//
-// let cell_rectangle = [grid.x_pos((x + x_offset, y + y_offset)),
-// grid.y_pos((x + x_offset, y + y_offset)),
-// cell_size,
-// cell_size];
-//
-// if c.alive {
-// rectangle(colour, cell_rectangle, transform, g);
-// }
-//
-// {
-// trace!("On iteration [{}], cell's iteration is [{}] ({}, {})",
-// iteration,
-// c.get_iteration(),
-// x,
-// y);
-// const AGE_LEVELS: usize = 3;
-// const AGE_MAX_DARK: f32 = 0.75;
-// const AGE_DARK_INCREMENT: f32 = AGE_MAX_DARK / ((AGE_LEVELS - 1) as f32);
-//
-// let age = cmp::min(AGE_LEVELS - 1, iteration - c.get_iteration());
-// let age_dark = AGE_DARK_INCREMENT * (age as f32);
-// trace!("Age of cell is [{}], setting darkness to [{}]. Note, dark increment is \
-// [{}]",
-// age,
-// age_dark,
-// AGE_DARK_INCREMENT);
-// let age_colour = [0.0, 0.0, 0.0, age_dark];
-//
-// rectangle(age_colour, cell_rectangle, transform, g);
-// }
-// }
-// }
-// }
-//
 
 fn draw_cell<G>(cell: Cell,
                 x: u32,
@@ -229,86 +157,34 @@ fn main() {
     info!("starting up");
     let section_width = 10;
     let section_height = 10;
+    let sections_size = 6;
 
-    let mut columns: Vec<Vec<Box<BoardSection>>> = Vec::new();
+    let mut rows: Vec<Vec<Box<BoardSection>>> = Vec::new();
 
-    {
+    for x in 0..sections_size {
         let mut col: Vec<Box<BoardSection>> = Vec::new();
 
-        let mut alives = HashMap::new();
-        // Glider
-        alives.insert((3, 5), true);
-        alives.insert((4, 5), true);
-        alives.insert((5, 5), true);
-        alives.insert((5, 4), true);
-        alives.insert((4, 3), true);
+        for y in 0..sections_size {
 
-        let board = Board::new(section_width, section_height, &alives);
-        col.push(Box::new(LocalBoardSection::new(board)));
+            let mut alives = HashMap::new();
 
-        let alives = HashMap::new();
+            if x == 0 && y == 0 {
+                // Glider
+                alives.insert((3, 5), true);
+                alives.insert((4, 5), true);
+                alives.insert((5, 5), true);
+                alives.insert((5, 4), true);
+                alives.insert((4, 3), true);
+            }
 
-        let board = Board::new(section_width, section_height, &alives);
-        col.push(Box::new(LocalBoardSection::new(board)));
+            let board = Board::new(section_width, section_height, &alives);
+            col.push(Box::new(LocalBoardSection::new(board)));
+        }
 
-        let board = Board::new(section_width, section_height, &alives);
-        col.push(Box::new(LocalBoardSection::new(board)));
-
-        columns.push(col);
-    }
-    {
-        let mut col: Vec<Box<BoardSection>> = Vec::new();
-        let alives = HashMap::new();
-
-        let board = Board::new(section_width, section_height, &alives);
-        col.push(Box::new(LocalBoardSection::new(board)));
-
-        let board = Board::new(section_width, section_height, &alives);
-        col.push(Box::new(LocalBoardSection::new(board)));
-
-        let board = Board::new(section_width, section_height, &alives);
-        col.push(Box::new(LocalBoardSection::new(board)));
-
-        columns.push(col);
+        rows.push(col);
     }
 
-    {
-        let mut col: Vec<Box<BoardSection>> = Vec::new();
-        let alives = HashMap::new();
-
-        let board = Board::new(section_width, section_height, &alives);
-        col.push(Box::new(LocalBoardSection::new(board)));
-
-        let board = Board::new(section_width, section_height, &alives);
-        col.push(Box::new(LocalBoardSection::new(board)));
-
-        let board = Board::new(section_width, section_height, &alives);
-        col.push(Box::new(LocalBoardSection::new(board)));
-
-        columns.push(col);
-    }
-
-    let whole = Whole::new(columns);
-    // let bottom_callback: Box<Fn(&[&Cell])> = {
-    // let sb = sectionBottom.clone();
-    //
-    // Box::new(move |cells: &[&Cell]| {
-    // sb.lock().unwrap().update(BoardSectionSide::Top, cells);
-    // })
-    // };
-    // let bottom_subscribe = CellStateCallback::new((0, 1), bottom_callback);
-    // sectionTop.lock().unwrap().subscribe(BoardSectionSide::Bottom, bottom_subscribe);
-    //
-    // let top_callback: Box<Fn(&[&Cell])> = {
-    // let st = sectionTop.clone();
-    //
-    // Box::new(move |cells: &[&Cell]| {
-    // st.lock().unwrap().update(BoardSectionSide::Bottom, cells);
-    // })
-    // };
-    // let top_subscribe = CellStateCallback::new((0, 0), top_callback);
-    // sectionBottom.lock().unwrap().subscribe(BoardSectionSide::Top, top_subscribe);
-    //
+    let whole = Whole::new(rows);
 
     let total_rows = whole.rows_count() as u32;
     let total_columns = whole.columns_count() as u32;
@@ -338,18 +214,68 @@ fn main() {
     };
     let grid_line = Line::new([0.0, 0.0, 0.0, 1.0], 1.0);
 
-    let mut events = window.events().max_fps(6);
+    let mut events = window.events().max_fps(24);
     let mut iteration = 0;
     let mut tick = 0;
 
     let whole = &whole;
+    let section_edges_count = (whole.sections_height() + whole.sections_width()) * 2;
+
+    let mut senders = HashMap::with_capacity(section_edges_count);
+    for x in 0..whole.sections_width() {
+        // Top edge
+        {
+            let section_arc = whole.get_section(x, 0);
+            let sender = Whole::create_sender(BoardSectionSide::Top, &section_arc);
+
+            let c = senders.entry(BoardSectionSide::Top)
+                .or_insert_with(|| Vec::with_capacity(whole.sections_width()));
+
+            c.push(sender);
+        }
+
+        // Bottom edge
+        {
+            let section_arc = whole.get_section(x, whole.sections_height() - 1);
+            let sender = Whole::create_sender(BoardSectionSide::Bottom, &section_arc);
+
+            let c = senders.entry(BoardSectionSide::Bottom)
+                .or_insert_with(|| Vec::with_capacity(whole.sections_width()));
+
+            c.push(sender);
+        }
+    }
+    for y in 0..whole.sections_height() {
+        // Left edge
+        {
+            let section_arc = whole.get_section(0, y);
+            let sender = Whole::create_sender(BoardSectionSide::Left, &section_arc);
+
+            let c = senders.entry(BoardSectionSide::Left)
+                .or_insert_with(|| Vec::with_capacity(whole.sections_height()));
+
+            c.push(sender);
+        }
+
+        // Right edge
+        {
+            let section_arc = whole.get_section(whole.sections_width() - 1, y);
+            let sender = Whole::create_sender(BoardSectionSide::Right, &section_arc);
+
+            let c = senders.entry(BoardSectionSide::Right)
+                .or_insert_with(|| Vec::with_capacity(whole.sections_height()));
+
+            c.push(sender);
+        }
+    }
+
 
     while let Some(e) = events.next(&mut window) {
         if let Some(args) = e.render_args() {
             gl.draw(args.viewport(), |c, g| {
                 debug!("Doing iteration [{}], tick is [{}]", iteration, tick);
 
-                do_life(whole, iteration);
+                do_life(&senders, section_width, section_height, whole, iteration);
 
                 clear([1.0, 1.0, 1.0, 1.0], g);
 

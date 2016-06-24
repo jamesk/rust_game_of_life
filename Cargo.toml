@@ -11,6 +11,7 @@ piston2d-graphics = "0.13.0"
 piston2d-opengl_graphics = "0.23.0"
 log = "0.3"
 env_logger = "0.3.3"
+threadpool = "1.0"
 
 [dependencies.pistoncore-sdl2_window]
 version = "0.23.0"
