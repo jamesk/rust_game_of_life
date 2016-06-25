@@ -31,7 +31,7 @@ use std::sync::Arc;
 fn do_life(senders: &HashMap<BoardSectionSide, Vec<SyncSender<Arc<Vec<Cell>>>>>,
            width: u32,
            height: u32,
-           whole: &Whole,
+           whole: &mut Whole,
            iteration: usize) {
     let cell = Cell::new(false, iteration, false);
 
@@ -89,7 +89,7 @@ fn do_life(senders: &HashMap<BoardSectionSide, Vec<SyncSender<Arc<Vec<Cell>>>>>,
         for y in 0..whole.sections_height() {
             let section_arc = whole.get_section(x, y);
 
-            section_arc.lock().unwrap().try_iteration(iteration);
+            section_arc.try_iteration(iteration);
         }
     }
 }
@@ -157,34 +157,10 @@ fn main() {
     info!("starting up");
     let section_width = 10;
     let section_height = 10;
-    let sections_size = 6;
+    let whole_size = 6;
 
-    let mut rows: Vec<Vec<Box<BoardSection>>> = Vec::new();
-
-    for x in 0..sections_size {
-        let mut col: Vec<Box<BoardSection>> = Vec::new();
-
-        for y in 0..sections_size {
-
-            let mut alives = HashMap::new();
-
-            if x == 0 && y == 0 {
-                // Glider
-                alives.insert((3, 5), true);
-                alives.insert((4, 5), true);
-                alives.insert((5, 5), true);
-                alives.insert((5, 4), true);
-                alives.insert((4, 3), true);
-            }
-
-            let board = Board::new(section_width, section_height, &alives);
-            col.push(Box::new(LocalBoardSection::new(board)));
-        }
-
-        rows.push(col);
-    }
-
-    let whole = Whole::new(rows);
+    let (sections, edge_senders) = Whole::create_sections(section_width, section_height, whole_size);
+	let mut whole = Whole::new(sections);
 
     let total_rows = whole.rows_count() as u32;
     let total_columns = whole.columns_count() as u32;
@@ -218,64 +194,14 @@ fn main() {
     let mut iteration = 0;
     let mut tick = 0;
 
-    let whole = &whole;
-    let section_edges_count = (whole.sections_height() + whole.sections_width()) * 2;
-
-    let mut senders = HashMap::with_capacity(section_edges_count);
-    for x in 0..whole.sections_width() {
-        // Top edge
-        {
-            let section_arc = whole.get_section(x, 0);
-            let sender = Whole::create_sender(BoardSectionSide::Top, &section_arc);
-
-            let c = senders.entry(BoardSectionSide::Top)
-                .or_insert_with(|| Vec::with_capacity(whole.sections_width()));
-
-            c.push(sender);
-        }
-
-        // Bottom edge
-        {
-            let section_arc = whole.get_section(x, whole.sections_height() - 1);
-            let sender = Whole::create_sender(BoardSectionSide::Bottom, &section_arc);
-
-            let c = senders.entry(BoardSectionSide::Bottom)
-                .or_insert_with(|| Vec::with_capacity(whole.sections_width()));
-
-            c.push(sender);
-        }
-    }
-    for y in 0..whole.sections_height() {
-        // Left edge
-        {
-            let section_arc = whole.get_section(0, y);
-            let sender = Whole::create_sender(BoardSectionSide::Left, &section_arc);
-
-            let c = senders.entry(BoardSectionSide::Left)
-                .or_insert_with(|| Vec::with_capacity(whole.sections_height()));
-
-            c.push(sender);
-        }
-
-        // Right edge
-        {
-            let section_arc = whole.get_section(whole.sections_width() - 1, y);
-            let sender = Whole::create_sender(BoardSectionSide::Right, &section_arc);
-
-            let c = senders.entry(BoardSectionSide::Right)
-                .or_insert_with(|| Vec::with_capacity(whole.sections_height()));
-
-            c.push(sender);
-        }
-    }
-
+    let whole = &mut whole;
 
     while let Some(e) = events.next(&mut window) {
         if let Some(args) = e.render_args() {
             gl.draw(args.viewport(), |c, g| {
                 debug!("Doing iteration [{}], tick is [{}]", iteration, tick);
 
-                do_life(&senders, section_width, section_height, whole, iteration);
+                do_life(&edge_senders, section_width, section_height, whole, iteration);
 
                 clear([1.0, 1.0, 1.0, 1.0], g);
 

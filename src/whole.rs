@@ -1,91 +1,183 @@
 use section::*;
+use board::Board;
 use board::Cell;
 use std::sync::{Arc, Mutex};
 use std::cmp;
 use std::sync::mpsc::SyncSender;
 use std::sync::mpsc;
+use std::collections::HashMap;
 
 pub struct Whole {
-    sections: Vec<Vec<Arc<Mutex<Box<BoardSection>>>>>,
+    sections: Vec<Vec<Box<BoardSection>>>,
 }
 
 impl Whole {
-    pub fn new(mut sections: Vec<Vec<Box<BoardSection>>>) -> Whole {
-        // TODO: assert columns have same height?
+	pub fn new(sections: Vec<Vec<Box<BoardSection>>>) -> Whole {
+		Whole {
+			sections: sections
+		}
+	}
+	
+    pub fn create_sections(section_width: u32,
+                           section_height: u32,
+                           whole_size: usize)
+                           -> (
+                           	Vec<Vec<Box<BoardSection>>>,
+                           	HashMap<BoardSectionSide, Vec<SyncSender<Arc<Vec<Cell>>>>>
+   ) {
+        let mut sections = Whole::create_sections_sub(section_height, section_width, whole_size);
+        Whole::connect_sections(&mut sections);
 
-        let safe_sections = sections.drain(0..)
-            .map(|mut row| {
-                row.drain(0..)
-                    .map(|s| Arc::new(Mutex::new(s)))
-                    .collect()
-            })
-            .collect();
+        let edge_senders = Whole::create_edge_senders(whole_size, &mut sections);
 
-        Whole::connect_sections(&safe_sections);
-
-        Whole { sections: safe_sections }
+        (sections, edge_senders)
     }
 
-    pub fn create_sender(side: BoardSectionSide,
-                  section: &Arc<Mutex<Box<BoardSection>>>)
-                  -> SyncSender<Arc<Vec<Cell>>> {
+    fn create_sections_sub(section_width: u32,
+                           section_height: u32,
+                           whole_size: usize)
+                           -> Vec<Vec<Box<BoardSection>>> {
+        let mut rows = Vec::new();
+
+        for x in 0..whole_size {
+            let mut col: Vec<Box<BoardSection>> = Vec::new();
+
+            for y in 0..whole_size {
+
+                let mut alives = HashMap::new();
+
+                if x == 0 && y == 0 {
+                    // Glider
+                    alives.insert((3, 5), true);
+                    alives.insert((4, 5), true);
+                    alives.insert((5, 5), true);
+                    alives.insert((5, 4), true);
+                    alives.insert((4, 3), true);
+                }
+
+                let board = Board::new(section_width, section_height, &alives);
+                col.push(Box::new(LocalBoardSection::new(board)));
+            }
+
+            rows.push(col);
+        }
+
+        rows
+    }
+
+    fn create_edge_senders(whole_size: usize,
+                           sections: &mut Vec<Vec<Box<BoardSection>>>)
+                           -> HashMap<BoardSectionSide, Vec<SyncSender<Arc<Vec<Cell>>>>> {
+        let edges_count = whole_size * 4;
+        let max_section_index = whole_size - 1;
+        let mut senders = HashMap::with_capacity(edges_count);
+        for x in 0..whole_size {
+            // Top edge
+            {
+                let section = &mut sections[x][0];
+                let sender = Whole::create_sender(BoardSectionSide::Top, section);
+
+                let c = senders.entry(BoardSectionSide::Top)
+                    .or_insert_with(|| Vec::with_capacity(whole_size));
+
+                c.push(sender);
+            }
+
+            // Bottom edge
+            {
+                let section = &mut sections[x][max_section_index];
+                let sender = Whole::create_sender(BoardSectionSide::Bottom, section);
+
+                let c = senders.entry(BoardSectionSide::Bottom)
+                    .or_insert_with(|| Vec::with_capacity(whole_size));
+
+                c.push(sender);
+            }
+        }
+
+        for y in 0..whole_size {
+            // Left edge
+            {
+                let section = &mut sections[0][y];
+                let sender = Whole::create_sender(BoardSectionSide::Left, section);
+
+                let c = senders.entry(BoardSectionSide::Left)
+                    .or_insert_with(|| Vec::with_capacity(whole_size));
+
+                c.push(sender);
+            }
+
+            // Right edge
+            {
+                let section = &mut sections[max_section_index][y];
+                let sender = Whole::create_sender(BoardSectionSide::Right, section);
+
+                let c = senders.entry(BoardSectionSide::Right)
+                    .or_insert_with(|| Vec::with_capacity(whole_size));
+
+                c.push(sender);
+            }
+        }
+
+        senders
+    }
+
+    fn create_sender(side: BoardSectionSide,
+                     section: &mut Box<BoardSection>)
+                     -> SyncSender<Arc<Vec<Cell>>> {
         let (tx, rx) = mpsc::sync_channel(1);
 
-        section.lock().unwrap().add_receiver(side, rx);
+        section.add_receiver(side, rx);
 
         tx
     }
 
-    fn connect_sections(sections: &Vec<Vec<Arc<Mutex<Box<BoardSection>>>>>) {
-        for (x, column) in sections.iter().enumerate() {
-            for (y, section) in column.iter().enumerate() {
-                let mut s = section.lock().unwrap();
+    fn connect_sections(sections: &mut Vec<Vec<Box<BoardSection>>>) {
+        for x in 0..sections.len() {
+            for y in 0..sections[x].len() {
+                {
+                    let (top, bottom) = sections[x].split_at_mut(y + 1);
+                    for section in top.last_mut() {
+                        for other_section in bottom.first_mut() {
+                            let side = BoardSectionSide::Bottom;
+                            let other_side = BoardSectionSide::Top;
 
-                for ox in x.checked_sub(1) {
-                    for other_section in sections.get(ox).and_then(|c| c.get(y)) {
-                        let my_side = BoardSectionSide::Left;
-                        let other_side = BoardSectionSide::Right;
-                        let callback = CellStateCallback::new((ox, y),
-                                                              Whole::create_sender(other_side,
-                                                                                other_section));
+                            let callback =
+                                CellStateCallback::new((x, y), Whole::create_sender(side, section));
+                            other_section.subscribe(other_side, callback);
 
-                        s.subscribe(my_side, callback);
+                            let other_callback =
+                                CellStateCallback::new((x, y + 1),
+                                                       Whole::create_sender(other_side,
+                                                                            other_section));
+                            section.subscribe(side, other_callback);
+                        }
                     }
                 }
 
-                for ox in x.checked_add(1) {
-                    for other_section in sections.get(ox).and_then(|c| c.get(y)) {
-                        let my_side = BoardSectionSide::Right;
-                        let other_side = BoardSectionSide::Left;
-                        let callback = CellStateCallback::new((ox, y),
-                                                              Whole::create_sender(other_side,
-                                                                                other_section));
+                {
+                    let (left, right) = sections.split_at_mut(x + 1);
 
-                        s.subscribe(my_side, callback);
-                    }
-                }
+                    for left_col in left.last_mut() {
+                        for right_col in right.first_mut() {
+                            for section in left_col.get_mut(y) {
+                                for other_section in right_col.get_mut(y) {
+                                    let side = BoardSectionSide::Right;
+                                    let other_side = BoardSectionSide::Left;
 
-                for oy in y.checked_sub(1) {
-                    for other_section in sections.get(x).and_then(|c| c.get(oy)) {
-                        let my_side = BoardSectionSide::Top;
-                        let other_side = BoardSectionSide::Bottom;
-                        let callback = CellStateCallback::new((x, oy),
-                                                              Whole::create_sender(other_side,
-                                                                                other_section));
+                                    let callback =
+                                        CellStateCallback::new((x, y),
+                                                               Whole::create_sender(side, section));
+                                    other_section.subscribe(other_side, callback);
 
-                        s.subscribe(my_side, callback);
-                    }
-                }
-
-                for oy in y.checked_add(1) {
-                    for other_section in sections.get(x).and_then(|c| c.get(oy)) {
-                        let my_side = BoardSectionSide::Bottom;
-                        let other_side = BoardSectionSide::Top;
-                        let callback = CellStateCallback::new((x, oy),
-                                                              Whole::create_sender(other_side,
-                                                                                other_section));
-
-                        s.subscribe(my_side, callback);
+                                    let other_callback =
+                                        CellStateCallback::new((x + 1, y),
+                                                               Whole::create_sender(other_side,
+                                                                                    other_section));
+                                    section.subscribe(side, other_callback);
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -105,7 +197,7 @@ impl Whole {
             .get(0)
             .and_then(|c| {
                 c.get(0).map(|s| {
-                    let raw_width = s.lock().unwrap().get_board().get_width() as usize;
+                    let raw_width = s.get_board().get_width() as usize;
 
                     // Take off 2 for the joining columns
                     cmp::max(0, raw_width - 2)
@@ -128,7 +220,7 @@ impl Whole {
             .get(0)
             .and_then(|c| {
                 c.get(0).map(|s| {
-                    let raw_height = s.lock().unwrap().get_board().get_height() as usize;
+                    let raw_height = s.get_board().get_height() as usize;
 
                     // Take off 2 for the joining rows
                     cmp::max(0, raw_height - 2)
@@ -148,8 +240,7 @@ impl Whole {
     pub fn foreach_cell(&self, callback: &mut FnMut(Cell, u32, u32)) {
         for (sx, col) in self.sections.iter().enumerate() {
             for (sy, sec) in col.iter().enumerate() {
-                let s = sec.lock().unwrap();
-                let b = s.get_board();
+                let b = sec.get_board();
 
                 let offset_x = (sx as u32) * (b.get_width() - 2);
                 let offset_y = (sy as u32) * (b.get_height() - 2);
@@ -176,7 +267,7 @@ impl Whole {
         }
     }
 
-    pub fn get_section(&self, x: usize, y: usize) -> Arc<Mutex<Box<BoardSection>>> {
-        self.sections[x][y].clone()
+    pub fn get_section(&mut self, x: usize, y: usize) -> &mut Box<BoardSection> {
+        &mut self.sections[x][y]
     }
 }
