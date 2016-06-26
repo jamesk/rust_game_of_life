@@ -62,8 +62,8 @@ impl Whole {
                 let board = Board::new(section_width, section_height, &alives);
                 let (section, registerer) = LocalBoardSection::create(board);
                 
-                let start_x = (x as u32) * section_width;
-                let start_y = (y as u32) * section_height;
+                let start_x = (x as u32) * (section_width - 2);
+                let start_y = (y as u32) * (section_height - 2);
                 let area = Rectangle::new(start_x, start_y, section_width, section_height);
                 
                 registerers.push((area, registerer));
