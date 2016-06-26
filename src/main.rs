@@ -23,6 +23,8 @@ use graphics::clear;
 use rust_game_of_life::section::*;
 use rust_game_of_life::board::*;
 use rust_game_of_life::whole::*;
+use rust_game_of_life::view::Rectangle;
+use rust_game_of_life::view::BoardView;
 use std::cmp;
 use std::sync::mpsc::SyncSender;
 use std::sync::mpsc::TrySendError;
@@ -83,8 +85,8 @@ fn do_life(senders: &HashMap<BoardSectionSide, Vec<SyncSender<Arc<Vec<Cell>>>>>,
             }
         }
     }
-    
-    //TODO: move this into a thread pool type thing
+
+    // TODO: move this into a thread pool type thing
     for x in 0..whole.sections_width() {
         for y in 0..whole.sections_height() {
             let section_arc = whole.get_section(x, y);
@@ -94,7 +96,7 @@ fn do_life(senders: &HashMap<BoardSectionSide, Vec<SyncSender<Arc<Vec<Cell>>>>>,
     }
 }
 
-fn draw_cell<G>(cell: Cell,
+fn draw_cell<G>(cell_op: Option<Cell>,
                 x: u32,
                 y: u32,
                 iteration: usize,
@@ -104,50 +106,60 @@ fn draw_cell<G>(cell: Cell,
                 g: &mut G)
     where G: Graphics
 {
-    let colour = [0.0, 1.0, 0.0, 1.0]; // green
-
     let cell_rectangle = [grid.x_pos((x, y)), grid.y_pos((x, y)), cell_size, cell_size];
 
-    let alive = if iteration >= cell.get_iteration() {
-        cell.alive
-    } else if iteration + 1 == cell.get_iteration() {
-        cell.get_previous_alive()
-    } else {
-        panic!("Asked to draw iteration [{}] but cell's iteration is [{}], cell too far ahead to \
-                draw. Cell's co-ords are [{}, {}]",
-               iteration,
-               cell.get_iteration(),
-               x,
-               y);
-    };
+    match cell_op {
+        Some(cell) => {
+        	let colour = [0.0, 1.0, 0.0, 1.0]; // green
+        	
+            let alive = if iteration >= cell.get_iteration() {
+                cell.alive
+            } else if iteration + 1 == cell.get_iteration() {
+                cell.get_previous_alive()
+            } else {
+                panic!("Asked to draw iteration [{}] but cell's iteration is [{}], cell too far \
+                        ahead to draw. Cell's co-ords are [{}, {}]",
+                       iteration,
+                       cell.get_iteration(),
+                       x,
+                       y);
+            };
 
-    if alive {
-        rectangle(colour, cell_rectangle, transform, g);
+            if alive {
+                rectangle(colour, cell_rectangle, transform, g);
+            }
+
+            {
+                trace!("On iteration [{}], cell's iteration is [{}] ({}, {})",
+                       iteration,
+                       cell.get_iteration(),
+                       x,
+                       y);
+                const AGE_LEVELS: usize = 3;
+                const AGE_MAX_DARK: f32 = 0.75;
+                const AGE_DARK_INCREMENT: f32 = AGE_MAX_DARK / ((AGE_LEVELS - 1) as f32);
+
+                let cell_age = iteration.checked_sub(cell.get_iteration()).unwrap_or(0);
+                let display_age = cmp::min(AGE_LEVELS - 1, cell_age);
+                let age_dark = AGE_DARK_INCREMENT * (display_age as f32);
+                trace!("Age of cell is [{}], display age is [{}], setting darkness to [{}]. \
+                        Note, dark increment is [{}]",
+                       cell_age,
+                       display_age,
+                       age_dark,
+                       AGE_DARK_INCREMENT);
+                let age_colour = [0.0, 0.0, 0.0, age_dark];
+
+                rectangle(age_colour, cell_rectangle, transform, g);
+            }
+        }
+        None => {
+        	let colour = [1.0, 1.0, 1.0, 1.0]; // black
+        	rectangle(colour, cell_rectangle, transform, g);
+        }
     }
 
-    {
-        trace!("On iteration [{}], cell's iteration is [{}] ({}, {})",
-               iteration,
-               cell.get_iteration(),
-               x,
-               y);
-        const AGE_LEVELS: usize = 3;
-        const AGE_MAX_DARK: f32 = 0.75;
-        const AGE_DARK_INCREMENT: f32 = AGE_MAX_DARK / ((AGE_LEVELS - 1) as f32);
 
-        let cell_age = iteration.checked_sub(cell.get_iteration()).unwrap_or(0);
-        let display_age = cmp::min(AGE_LEVELS - 1, cell_age);
-        let age_dark = AGE_DARK_INCREMENT * (display_age as f32);
-        trace!("Age of cell is [{}], display age is [{}], setting darkness to [{}]. Note, dark \
-                increment is [{}]",
-               cell_age,
-               display_age,
-               age_dark,
-               AGE_DARK_INCREMENT);
-        let age_colour = [0.0, 0.0, 0.0, age_dark];
-
-        rectangle(age_colour, cell_rectangle, transform, g);
-    }
 }
 
 
@@ -159,8 +171,14 @@ fn main() {
     let section_height = 10;
     let whole_size = 6;
 
-    let (sections, edge_senders) = Whole::create_sections(section_width, section_height, whole_size);
-	let mut whole = Whole::new(sections);
+    let (sections, edge_senders, registerers) =
+        Whole::create_sections(section_width, section_height, whole_size);
+    let view_rectangle = Rectangle::new(0,
+                                        0,
+                                        section_width * (whole_size as u32),
+                                        section_height * (whole_size as u32));
+    let mut view = BoardView::new(view_rectangle, registerers);
+    let mut whole = Whole::new(sections);
 
     let total_rows = whole.rows_count() as u32;
     let total_columns = whole.columns_count() as u32;
@@ -201,12 +219,16 @@ fn main() {
             gl.draw(args.viewport(), |c, g| {
                 debug!("Doing iteration [{}], tick is [{}]", iteration, tick);
 
-                do_life(&edge_senders, section_width, section_height, whole, iteration);
+                do_life(&edge_senders,
+                        section_width,
+                        section_height,
+                        whole,
+                        iteration);
 
                 clear([1.0, 1.0, 1.0, 1.0], g);
 
                 let iteration_to_draw = iteration.checked_sub(1).unwrap_or(0);
-                whole.foreach_cell(&mut |cell, x, y| {
+                view.foreach_cell(&mut |cell, x, y| {
                     draw_cell(cell,
                               x,
                               y,

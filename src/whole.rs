@@ -1,11 +1,13 @@
 use section::*;
 use board::Board;
 use board::Cell;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::cmp;
+use std::sync::mpsc::Sender;
 use std::sync::mpsc::SyncSender;
 use std::sync::mpsc;
 use std::collections::HashMap;
+use view::Rectangle;
 
 pub struct Whole {
     sections: Vec<Vec<Box<BoardSection>>>,
@@ -23,24 +25,26 @@ impl Whole {
                            whole_size: usize)
                            -> (
                            	Vec<Vec<Box<BoardSection>>>,
-                           	HashMap<BoardSectionSide, Vec<SyncSender<Arc<Vec<Cell>>>>>
+                           	HashMap<BoardSectionSide, Vec<SyncSender<Arc<Vec<Cell>>>>>,
+                           	Box<[(Rectangle, Sender<Sender<Box<[Box<[Cell]>]>>>)]>
    ) {
-        let mut sections = Whole::create_sections_sub(section_height, section_width, whole_size);
+        let (mut sections, registerers) = Whole::create_sections_sub(section_height, section_width, whole_size);
         Whole::connect_sections(&mut sections);
 
         let edge_senders = Whole::create_edge_senders(whole_size, &mut sections);
 
-        (sections, edge_senders)
+        (sections, edge_senders, registerers)
     }
 
     fn create_sections_sub(section_width: u32,
                            section_height: u32,
                            whole_size: usize)
-                           -> Vec<Vec<Box<BoardSection>>> {
-        let mut rows = Vec::new();
+                           -> (Vec<Vec<Box<BoardSection>>>, Box<[(Rectangle, Sender<Sender<Box<[Box<[Cell]>]>>>)]>) {
+       	let mut registerers = Vec::with_capacity(whole_size * whole_size);
+        let mut rows = Vec::with_capacity(whole_size);
 
         for x in 0..whole_size {
-            let mut col: Vec<Box<BoardSection>> = Vec::new();
+            let mut col: Vec<Box<BoardSection>> = Vec::with_capacity(whole_size);
 
             for y in 0..whole_size {
 
@@ -56,13 +60,20 @@ impl Whole {
                 }
 
                 let board = Board::new(section_width, section_height, &alives);
-                col.push(Box::new(LocalBoardSection::new(board)));
+                let (section, registerer) = LocalBoardSection::create(board);
+                
+                let start_x = (x as u32) * section_width;
+                let start_y = (y as u32) * section_height;
+                let area = Rectangle::new(start_x, start_y, section_width, section_height);
+                
+                registerers.push((area, registerer));
+                col.push(Box::new(section));
             }
 
             rows.push(col);
         }
 
-        rows
+        (rows, registerers.into_boxed_slice())
     }
 
     fn create_edge_senders(whole_size: usize,

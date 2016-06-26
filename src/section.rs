@@ -3,6 +3,8 @@ use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::SyncSender;
+use std::sync::mpsc::channel;
+use std::sync::mpsc::Sender;
 use std::sync::mpsc::TryRecvError;
 use std::sync::mpsc::TrySendError;
 use std::sync::Arc;
@@ -69,19 +71,27 @@ pub struct LocalBoardSection {
     subscribes: HashMap<BoardSectionSide, HashSet<CellStateCallback>>,
 
     receivers: HashMap<BoardSectionSide, Receiver<Arc<Vec<Cell>>>>,
+
+    state_sender_registerer: Receiver<Sender<Box<[Box<[Cell]>]>>>,
+
+    state_senders: Vec<Sender<Box<[Box<[Cell]>]>>>,
 }
 
 impl LocalBoardSection {
-    pub fn new(board: Board) -> LocalBoardSection {
-        LocalBoardSection {
+    pub fn create(board: Board) -> (LocalBoardSection, Sender<Sender<Box<[Box<[Cell]>]>>>) {
+        let (tx, rx) = channel();
+
+        let section = LocalBoardSection {
             board: board,
             subscribes: HashMap::new(),
             receivers: HashMap::new(),
-        }
-    }
-}
+            state_sender_registerer: rx,
+            state_senders: Vec::new(),
+        };
 
-impl LocalBoardSection {
+        (section, tx)
+    }
+
     fn update(board: &mut Board, side: BoardSectionSide, cells: Arc<Vec<Cell>>) {
         // TODO: actual implementation to update state
         // TODO: check the cells array has right length?
@@ -136,31 +146,30 @@ impl BoardSection for LocalBoardSection {
     }
 
     fn add_receiver(&mut self, side: BoardSectionSide, rx: Receiver<Arc<Vec<Cell>>>) {
-    	match self.receivers.insert(side, rx) {
-    		Some(_) => {
-    			panic!("Should never call multiple times, at least not for now. Maybe in future we might move sections around dynamically or something")
-    		}
-    		None => {}
-    	};
+        match self.receivers.insert(side, rx) {
+            Some(_) => {
+                panic!("Should never call multiple times, at least not for now. Maybe in future \
+                        we might move sections around dynamically or something")
+            }
+            None => {}
+        };
     }
 
     fn try_iteration(&mut self, upto_iteration: usize) {
         // Read updates from other sections we are subscribed to
         {
-	        let mut board = &mut self.board;
-	        
-			for (side, rx) in self.receivers.iter() {
-				match rx.try_recv() {
-					Ok(cells) => {
-						LocalBoardSection::update(board, *side, cells)
-					}
-					Err(TryRecvError::Empty) => {}
-					Err(TryRecvError::Disconnected) => {} //TODO: do something??
-				}
-							
-			}
+            let mut board = &mut self.board;
+
+            for (side, rx) in self.receivers.iter() {
+                match rx.try_recv() {
+                    Ok(cells) => LocalBoardSection::update(board, *side, cells),
+                    Err(TryRecvError::Empty) => {}
+                    Err(TryRecvError::Disconnected) => {} //TODO: do something??
+                }
+
+            }
         }
-        
+
         // update each cell if possible, ordering is important?
         for x in 1..self.board.get_width() - 1 {
             for y in 1..self.board.get_height() - 1 {
@@ -254,6 +263,50 @@ impl BoardSection for LocalBoardSection {
                     Err(TrySendError::Disconnected(_)) => {
                         // TODO: unsubscribe
                     }
+                }
+            }
+        }
+
+        // Update our state senders
+        loop {
+            match self.state_sender_registerer.try_recv() {
+                Ok(state_sender) => {
+                    self.state_senders.push(state_sender);
+                }
+                Err(TryRecvError::Empty) => {
+                    break;
+                }
+                Err(TryRecvError::Disconnected) => {
+                    break; //We aren't going to get any more
+                }
+            }
+        }
+
+        let mut i = 0;
+        while i < self.state_senders.len() {
+            let send_result = {
+                let sender = &self.state_senders[i];
+
+                let mut cells = Vec::with_capacity(self.board.get_width() as usize);
+                for col in self.board.cells.iter() {
+                    let mut copy = Vec::with_capacity(col.len());
+
+                    for &cell in col.iter() {
+                        copy.push(cell);
+                    }
+
+                    cells.push(copy.into_boxed_slice());
+                }
+
+                sender.send(cells.into_boxed_slice())
+            };
+
+            match send_result {
+                Ok(_) => {
+                    i += 1;
+                }
+                Err(_) => {
+                    self.state_senders.remove(i);
                 }
             }
         }

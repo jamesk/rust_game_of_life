@@ -28,7 +28,7 @@ impl Cell {
 pub struct Board {
     width: u32,
     height: u32,
-    cells: Box<[Box<[Cell]>]>,
+    pub cells: Box<[Box<[Cell]>]>,
 }
 
 impl Board {
