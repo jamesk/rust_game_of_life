@@ -13,3 +13,6 @@ An interesting area I've explored a little is that if one section is slow/fails 
 #Interface
 The interface is a window where a 2D grid is rendered to represent the state of the simulation. An alive cell is represented as a green square while a dead cell is represented as a white square. Another dimension however is added in this view of the Game of Life, the "age" of the displayed cell. There is an effective global generation that in a perfect system all cells are at. However if a cell has fallen behind (perhaps due to a lack of information from its neighbours or other failure) it will be from an older generation. This is displayed on the interface by darkening the square for that cell, the darker the square the older the cell is. In the event that the interface has no information about a cell its corresponding square on the grid will be completely black.
 
+#Demo
+A demo that shows the aging of cells, see the youtube description for exact details. 
+[![Example run](https://img.youtube.com/vi/b58USzcAYMs/0.jpg)](https://youtu.be/b58USzcAYMs)
